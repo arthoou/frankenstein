@@ -1,8 +1,15 @@
 import os, sys, subprocess, shutil, tkinter as tk
 from tkinter import scrolledtext
 
-BASE = os.path.dirname(os.path.abspath(__file__))
-STAGES = os.path.join(BASE, 'stages')
+if getattr(sys, 'frozen', False):
+    # Running as a PyInstaller-built executable: the stages/ folder is
+    # bundled read-only inside the temp extraction dir (sys._MEIPASS),
+    # while build/ (compiler output cache) must live next to the exe.
+    BASE = os.path.dirname(os.path.abspath(sys.executable))
+    STAGES = os.path.join(sys._MEIPASS, 'stages')
+else:
+    BASE = os.path.dirname(os.path.abspath(__file__))
+    STAGES = os.path.join(BASE, 'stages')
 BUILD = os.path.join(BASE, 'build')
 os.makedirs(BUILD, exist_ok=True)
 
@@ -196,6 +203,44 @@ def whitespace(text):
     return text + ''.join(out)
 
 
+UNARY_TO_BF = {v: k for k, v in {'>': 1, '<': 2, '+': 3, '-': 4, '.': 5, ',': 6, '[': 7, ']': 8}.items()}
+
+
+def unary(text):
+    """Unary esolang: a Brainfuck program where every instruction is encoded
+    as a run of N zeroes (per UNARY_TO_BF), separated by newlines."""
+    src = open(os.path.join(STAGES, 'stage.unary'), encoding='utf-8').read()
+    ops = []
+    for token in src.split('\n'):
+        token = token.strip()
+        if token:
+            ops.append(UNARY_TO_BF[len(token)])
+    return text + run_tape_vm(''.join(ops))
+
+
+def befunge(text):
+    """Straight-line (no 2D movement) subset of Befunge-93: digit pushes,
+    + and * arithmetic, ',' output-as-char and '@' end."""
+    src = open(os.path.join(STAGES, 'stage.bf93'), encoding='utf-8').read()
+    stack = []
+    out = []
+    for c in src:
+        if c.isdigit():
+            stack.append(int(c))
+        elif c == '+':
+            b, a = stack.pop(), stack.pop()
+            stack.append(a + b)
+        elif c == '*':
+            b, a = stack.pop(), stack.pop()
+            stack.append(a * b)
+        elif c == ',':
+            out.append(chr(stack.pop()))
+        elif c == '@':
+            break
+        # space/newline/anything else: no-op, same as real Befunge-93
+    return text + ''.join(out)
+
+
 def pipeline(log):
     text = 'RAGEBAIT'
     log('[Python] ' + text)
@@ -208,6 +253,16 @@ def pipeline(log):
         ('Lua', lambda: [shutil.which('lua'), os.path.join(STAGES, 'stage.lua')] if shutil.which('lua') else None),
         ('Bash', lambda: [shutil.which('bash'), os.path.join(STAGES, 'stage.sh')] if shutil.which('bash') else None),
         ('PowerShell', lambda: [shutil.which('pwsh'), '-File', os.path.join(STAGES, 'stage.ps1')] if shutil.which('pwsh') else None),
+        ('TypeScript', lambda: [shutil.which('deno'), 'run', os.path.join(STAGES, 'stage.ts')] if shutil.which('deno') else None),
+        ('Kotlin', lambda: [shutil.which('kotlin'), os.path.join(STAGES, 'stage.kts')] if shutil.which('kotlin') else None),
+        ('Haskell', lambda: [shutil.which('runghc'), os.path.join(STAGES, 'stage.hs')] if shutil.which('runghc') else None),
+        ('Elixir', lambda: [shutil.which('elixir'), os.path.join(STAGES, 'stage.exs')] if shutil.which('elixir') else None),
+        ('Dart', lambda: [shutil.which('dart'), 'run', os.path.join(STAGES, 'stage.dart')] if shutil.which('dart') else None),
+        ('Nim', lambda: [shutil.which('nim'), 'r', '--hints:off', os.path.join(STAGES, 'stage.nim')] if shutil.which('nim') else None),
+        ('Julia', lambda: [shutil.which('julia'), os.path.join(STAGES, 'stage.jl')] if shutil.which('julia') else None),
+        ('Crystal', lambda: [shutil.which('crystal'), 'run', os.path.join(STAGES, 'stage.cr')] if shutil.which('crystal') else None),
+        ('Erlang', lambda: [shutil.which('escript'), os.path.join(STAGES, 'stage.erl')] if shutil.which('escript') else None),
+        ('Zig', lambda: [shutil.which('zig'), 'run', os.path.join(STAGES, 'stage.zig')] if shutil.which('zig') else None),
     ]
 
     for name, cb in specs:
@@ -225,6 +280,12 @@ def pipeline(log):
 
     text = whitespace(text)
     log('[Whitespace] ' + text)
+
+    text = unary(text)
+    log('[Unary] ' + text)
+
+    text = befunge(text)
+    log('[Befunge-93] ' + text)
     # ----------------------------------------------------------------------
 
     cexe = ensure_native('C', 'gcc', os.path.join(STAGES, 'stage.c'), 'stage_c')

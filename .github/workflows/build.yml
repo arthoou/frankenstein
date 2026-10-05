@@ -1,0 +1,44 @@
+name: Build FrankenApp executables
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact: FrankenApp-linux
+            add_data_sep: ":"
+          - os: windows-latest
+            artifact: FrankenApp-windows
+            add_data_sep: ";"
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pyinstaller
+
+      - name: Build standalone executable
+        run: >
+          pyinstaller --onefile --windowed --name FrankenApp
+          --add-data "stages${{ matrix.add_data_sep }}stages"
+          app.py
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            dist/FrankenApp
+            dist/FrankenApp.exe
+          if-no-files-found: ignore
